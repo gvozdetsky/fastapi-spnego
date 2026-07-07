@@ -14,7 +14,7 @@ from .exceptions import (
 from .middleware import SpnegoMiddleware
 from .models import NegotiateResult, SpnegoIdentity
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 __all__ = [
     "SpnegoAuth",
