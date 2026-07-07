@@ -34,18 +34,49 @@ Solidify, type, and document what exists; close the delegation lifecycle.
   coverage reporting in CI.
 - Graduate the package classifier from `Alpha` to `Beta`.
 
-## 0.3.0 — cross-platform
+## 0.3.0 — integrate & harden
 
-- **`pyspnego` / SSPI backend** so the server side runs on **Windows**, with
-  `default_backend()` preferring SSPI there and GSSAPI elsewhere.
-- Windows CI runner exercising the SSPI path.
+Make it production-grade on Linux/GSSAPI and idiomatic for Starlette apps.
+(No Windows/SSPI backend — see *Not planned*.)
+
+- **Starlette `AuthenticationBackend`.** Ship a backend so the verified principal
+  lands on `request.user` / `request.auth` and composes with Starlette's
+  `@requires(...)` scopes — a first-class option alongside the existing dependency
+  and middleware. Makes the library idiomatic for the whole Starlette ecosystem.
+- **Authenticate once, then session.** A helper (and recipe) to issue a signed
+  session cookie after the first successful Negotiate, so browsers don't
+  re-negotiate on every request. This is the standard real-world pattern
+  (WebSphere LTPA, Hadoop's signed cookie, `mod_auth_gssapi`'s `GssapiUseSessions`)
+  and the single biggest deployment-usability win.
+- **Testing utilities** (`fastapi_spnego.testing`). A public fake backend + helpers
+  so downstream apps can test their SPNEGO-protected routes without a KDC — a real
+  adoption lever (today the fake backend only exists inside our own tests).
+- **Channel binding / Extended Protection for Authentication** (opt-in). Bind the
+  Negotiate token to the TLS `tls-server-end-point` certificate hash. Active
+  Directory increasingly *enforces* this; `requests-kerberos` has done it
+  client-side since 0.12. The wrinkle is getting the cert behind a TLS-terminating
+  proxy — design carefully.
+- **Require-HTTPS option.** Refuse Negotiate over plaintext, honouring
+  `X-Forwarded-Proto` behind a reverse proxy (cf. `GssapiSSLonly`).
+- **Authorization data (stretch).** Expose Kerberos PAC / name-attribute data
+  (group SIDs) so apps can do group-based authz without a separate LDAP round trip
+  (cf. `GssapiNameAttributes`) — or, to start, a documented LDAP-lookup recipe.
+
 
 ## Later / under consideration
 
-- Stateful multi-leg negotiation (NTLM fallback). Low priority — NTLM is legacy and
-  discouraged; Kerberos completes in a single leg.
-- Pluggable identity mapping hooks (principal → app user) as optional helpers,
-  without pulling user storage into scope.
+- **Constrained delegation**: S4U2Proxy and S4U2Self / protocol transition for
+  onward auth (cf. `mod_auth_gssapi` `GssapiUseS4U2Proxy` / `GssapiImpersonate`).
+- **BasicAuth → GSSAPI fallback** for clients that can't do Negotiate.
+- **Local name mapping** via `gss_localname` (`auth_to_local` rules).
+- Stateful multi-leg negotiation (NTLM). Legacy and discouraged; low priority.
+
+## Not planned
+
+- **Windows / SSPI (`pyspnego`) server backend.** The server side targets
+  Linux/macOS, where FastAPI is deployed; Windows *clients* already authenticate
+  against it fine. Revisit only if there's real demand for running the app on
+  Windows.
 
 ## Out of scope (by design)
 
