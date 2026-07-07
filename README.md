@@ -7,7 +7,7 @@ The one enterprise auth mechanism with no FastAPI library — until now. Where
 have been told to bolt on Keycloak. This package fills that gap: a small,
 framework-idiomatic `Negotiate` provider you drop in as a dependency.
 
-> **Status: alpha.** The dependency, the optional ASGI middleware, and
+> **Status: beta.** The dependency, the optional ASGI middleware, and
 > credential delegation are implemented and covered by unit tests. The real
 > GSSAPI path is proven end-to-end against a containerized MIT KDC
 > (`docker compose run --rm test`) — genuine `kinit` + Negotiate handshake,
@@ -21,8 +21,7 @@ pip install fastapi-spnego[gssapi]   # Linux/macOS; needs libkrb5-dev
 
 **Platform support:** the server-side GSSAPI backend runs on **Linux and macOS**
 (where FastAPI is almost always deployed). Windows clients authenticate normally
-against it. A Windows/SSPI *server* backend is on the roadmap. The base package
-is pure-Python and imports anywhere; the
+against it. The base package is pure-Python and imports anywhere; the
 `gssapi` extra is what requires system Kerberos libraries.
 
 ## Use
@@ -52,8 +51,8 @@ Deploying for real (keytab creation, browser SPNEGO allowlisting, reverse-proxy
 notes, troubleshooting) is covered in **[docs/deploying.md](./docs/deploying.md)**.
 
 A bad or missing token is handled for you: no credentials → `401` with a
-`WWW-Authenticate: Negotiate` challenge; an invalid token → `403` (never a
-`500`). Set `SPNEGO_AUTO_ERROR=false` for optional auth, where the dependency
+`WWW-Authenticate: Negotiate` challenge; an invalid token → `403`.
+Set `SPNEGO_AUTO_ERROR=false` for optional auth, where the dependency
 returns `None` instead of challenging.
 
 ## Global middleware (alternative)
@@ -101,8 +100,6 @@ GSSAPI backend supports this, `pyspnego` will not).
   a `pyspnego` backend for Windows/SSPI is on the roadmap.
 - **Non-blocking.** GSSAPI calls run in a threadpool.
 - **Just a provider.** Returns a verified principal; your app owns users/sessions/RBAC.
-
-Requirements were distilled from pgAdmin's production Kerberos implementation.
 
 ## Development
 
