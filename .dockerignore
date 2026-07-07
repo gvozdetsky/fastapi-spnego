@@ -1,0 +1,16 @@
+# Keep the build context (and image) small and reproducible.
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+*.egg-info
+build
+dist
+.claude
+*.keytab

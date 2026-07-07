@@ -1,0 +1,74 @@
+# Development / integration environment for fastapi-spnego.
+#
+#   docker compose up --build app        # KDC + app, serving on localhost:8000
+#   docker compose run --rm --build test # run the end-to-end integration suite
+#
+# The `app` and `kdc` services share the image built from docker/Dockerfile and
+# a `keytab` volume; the `test` service acts as a Kerberos client.
+name: fastapi-spnego
+
+x-image: &image
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: fastapi-spnego-dev:latest
+
+services:
+  kdc:
+    <<: *image
+    hostname: kdc
+    entrypoint: ["/app/docker/kdc-entrypoint.sh"]
+    volumes:
+      - ./docker/krb5.conf:/etc/krb5.conf:ro
+      - keytab:/keytab
+    healthcheck:
+      # Ready once the service keytab has been exported for the app to load.
+      test: ["CMD", "test", "-f", "/keytab/app.keytab"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  app:
+    <<: *image
+    hostname: app.example.com
+    depends_on:
+      kdc:
+        condition: service_healthy
+    environment:
+      SPNEGO_SERVICE: HTTP
+      SPNEGO_HOSTNAME: app.example.com
+      SPNEGO_KEYTAB: /keytab/app.keytab
+      SPNEGO_ALLOW_DELEGATION: "true"
+      SPNEGO_CCACHE_DIR: /tmp/spnego_ccache
+    networks:
+      default:
+        # Reachable as an FQDN so the SPN is HTTP/app.example.com (no trailing dot).
+        aliases:
+          - app.example.com
+    volumes:
+      - ./docker/krb5.conf:/etc/krb5.conf:ro
+      - keytab:/keytab:ro
+    command: ["uvicorn", "examples.basic:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  test:
+    <<: *image
+    hostname: client
+    profiles: ["test"]
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      SPNEGO_TEST_URL: http://app.example.com:8000
+    volumes:
+      - ./docker/krb5.conf:/etc/krb5.conf:ro
+    command: ["pytest", "-m", "integration", "-v", "tests/integration"]
+
+volumes:
+  keytab:

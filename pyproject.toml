@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastapi-spnego"
+version = "0.0.1"
+description = "SPNEGO / Kerberos (HTTP Negotiate) authentication provider for FastAPI and Starlette"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Eugene Gvozdetsky" }]
+keywords = ["fastapi", "starlette", "kerberos", "spnego", "gssapi", "negotiate", "authentication", "sso", "active-directory"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: FastAPI",
+    "Topic :: System :: Systems Administration :: Authentication/Directory",
+    # The GSSAPI backend is POSIX-only; Windows/SSPI is on the roadmap.
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+]
+dependencies = [
+    "starlette>=0.37.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+]
+
+[project.optional-dependencies]
+# The GSSAPI backend (Linux/macOS). Requires system libkrb5-dev / MIT krb5.
+gssapi = ["gssapi>=1.8"]
+# NOTE: a cross-platform `spnego` extra (pyspnego, incl. Windows SSPI) will be
+# added when that backend lands. It is intentionally omitted for now so that
+# `pip install fastapi-spnego[spnego]` cannot imply Windows support we don't yet
+# ship.
+
+# Development tooling lives in PEP 735 dependency groups, not extras:
+# these are dev-only and must never ship to consumers of the published package.
+[dependency-groups]
+# Base dev env — pure-Python, installs cleanly everywhere (no system libs).
+dev = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "httpx>=0.27.0",
+    "ruff>=0.4.0",
+    "mypy>=1.9.0",
+]
+# Integration tests that exercise the real GSSAPI backend. Requires system
+# libkrb5-dev / MIT krb5 (krb5-config on PATH); kept out of `dev` so the base
+# dev env still installs on machines without Kerberos headers.
+gssapi = [
+    "gssapi>=1.8",
+    "requests-gssapi>=1.3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/gvozdetsky/fastapi-spnego"
+Issues = "https://github.com/gvozdetsky/fastapi-spnego/issues"
+
+[tool.setuptools.packages.find]
+include = ["fastapi_spnego*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# `Depends()`/`Query()`/etc. in argument defaults is the intended FastAPI idiom.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Cookie",
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+# The optional GSSAPI backend ships no type stubs.
+[[tool.mypy.overrides]]
+module = ["gssapi.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: end-to-end tests that require a real KDC (run via Docker).",
+]
