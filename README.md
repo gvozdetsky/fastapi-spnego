@@ -42,10 +42,14 @@ def whoami(identity: SpnegoIdentity = Depends(spnego)):
 Configure via `SPNEGO_` env vars (see `fastapi_spnego/config.py`):
 
 ```bash
-export SPNEGO_HOSTNAME=app.example.com   # FQDN of the service principal
-export SPNEGO_KEYTAB=/etc/app.keytab     # HTTP/app.example.com@REALM
-export SPNEGO_ALLOW_DELEGATION=true      # capture forwarded client TGTs (optional)
+export SPNEGO_HOSTNAME=app.example.com     # FQDN of the service principal
+export SPNEGO_KEYTAB=/etc/app.keytab       # HTTP/app.example.com@REALM
+export SPNEGO_ALLOW_DELEGATION=true        # capture forwarded client TGTs (optional)
+export SPNEGO_ACCEPT_ANY_PRINCIPAL=true    # accept any SPN in the keytab (reverse proxies)
 ```
+
+Deploying for real (keytab creation, browser SPNEGO allowlisting, reverse-proxy
+notes, troubleshooting) is covered in **[docs/deploying.md](./docs/deploying.md)**.
 
 A bad or missing token is handled for you: no credentials → `401` with a
 `WWW-Authenticate: Negotiate` challenge; an invalid token → `403` (never a
@@ -78,12 +82,17 @@ the server stores it in a per-user credentials cache and exposes the handle on
 the identity, so your app can act onward as that user:
 
 ```python
-identity.delegated_ccache   # e.g. "FILE:/tmp/fastapi_spnego_ccache/cache_alice_EXAMPLE.COM"
+from fastapi_spnego import ticket_lifetime, cleanup
+
+identity.delegated_ccache             # "FILE:/tmp/fastapi_spnego_ccache/cache_alice_EXAMPLE.COM"
+ticket_lifetime(identity.delegated_ccache)   # remaining seconds, or None if gone/expired
 # use it: env KRB5CCNAME=<handle> for an onward Kerberos connection
+cleanup(identity.delegated_ccache)    # remove the ccache on logout/teardown
 ```
 
-Requires the SPN to be flagged *trusted for delegation* and the client to opt in
-(GSSAPI/SSPI-only; the GSSAPI backend supports this, `pyspnego` will not).
+Re-authentication refreshes the ccache automatically. Requires the SPN to be
+flagged *trusted for delegation* and the client to opt in (GSSAPI/SSPI-only; the
+GSSAPI backend supports this, `pyspnego` will not).
 
 ## Design
 

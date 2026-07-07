@@ -18,6 +18,7 @@ import os
 import re
 
 from .config import SpnegoConfig
+from .exceptions import BackendUnavailableError
 
 logger = logging.getLogger("fastapi_spnego")
 
@@ -71,6 +72,37 @@ def store_delegated(delegated_creds: object, config: SpnegoConfig) -> str | None
     os.chmod(path, 0o600)
     logger.debug("Stored delegated credentials for %s at %s", name, handle)
     return handle
+
+
+def ticket_lifetime(handle: str | None) -> int | None:
+    """Return the remaining lifetime, in seconds, of a stored delegated ccache.
+
+    Mirrors pgAdmin's ``validate_ticket``: open the credentials cache and read the
+    remaining validity of the delegated ticket. Useful for deciding when an app
+    session backed by delegated credentials should be considered expired.
+
+    :param handle: a ``FILE:<path>`` ccache handle (or bare path) as returned by
+        :func:`store_delegated` / ``SpnegoIdentity.delegated_ccache``.
+    :returns: remaining seconds, or ``None`` if ``handle`` is empty, the ccache is
+        missing/unreadable, or the credentials have already expired.
+    :raises BackendUnavailableError: if the ``gssapi`` package is not installed.
+    """
+    if not handle:
+        return None
+    try:
+        import gssapi
+    except (ImportError, OSError) as exc:
+        raise BackendUnavailableError(
+            "ticket_lifetime requires the 'gssapi' package; "
+            "install with `pip install fastapi-spnego[gssapi]`."
+        ) from exc
+    try:
+        creds = gssapi.Credentials(store={"ccache": handle})
+        lifetime = creds.lifetime
+    except Exception as exc:  # noqa: BLE001 — missing ccache or expired creds
+        logger.debug("Could not read ticket lifetime from %s: %s", handle, exc)
+        return None
+    return int(lifetime) if lifetime else None
 
 
 def cleanup(handle: str | None) -> None:

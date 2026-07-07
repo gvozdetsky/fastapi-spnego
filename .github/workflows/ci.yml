@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  # Callable from other workflows (e.g. publish.yml gates releases on a green CI).
+  workflow_call:
 
 # Cancel superseded runs on the same ref to save minutes.
 concurrency:
@@ -17,13 +20,17 @@ jobs:
   quality:
     name: Lint & type-check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history + tags so setuptools_scm can derive the version
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync
+      - name: Sync dependencies (locked)
+        run: uv sync --locked
       - name: Ruff lint
         run: uv run ruff check .
       - name: Ruff format
@@ -34,29 +41,38 @@ jobs:
   test:
     name: Unit tests (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - name: Install Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
-      - name: Sync dependencies
-        run: uv sync --python ${{ matrix.python-version }}
+      - name: Sync dependencies (locked)
+        run: uv sync --locked --python ${{ matrix.python-version }}
       - name: Run unit tests
-        run: uv run --python ${{ matrix.python-version }} pytest -q
+        run: >-
+          uv run --python ${{ matrix.python-version }}
+          pytest -q --cov=fastapi_spnego --cov-report=term-missing
 
   integration:
     name: End-to-end (real KDC)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       # Stands up an MIT KDC + app + client and runs the real Negotiate
       # handshake, mutual auth, and delegation. See docker-compose.yml.
       - name: Run KDC integration suite
         run: docker compose run --rm --build test
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

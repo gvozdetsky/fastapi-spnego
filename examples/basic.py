@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI
 
-from fastapi_spnego import SpnegoAuth, SpnegoIdentity
+from fastapi_spnego import SpnegoAuth, SpnegoIdentity, ticket_lifetime
 
 app = FastAPI(title="fastapi-spnego example")
 spnego = SpnegoAuth()
@@ -30,6 +30,8 @@ def whoami(identity: SpnegoIdentity = Depends(spnego)) -> dict[str, Any]:
         # Populated only when delegation is enabled and the client forwarded a TGT.
         "delegated_ccache": identity.delegated_ccache,
         "ticket_lifetime": identity.extra.get("ticket_lifetime"),
+        # Remaining lifetime read back from the stored delegated ccache.
+        "ccache_lifetime": ticket_lifetime(identity.delegated_ccache),
     }
 
 

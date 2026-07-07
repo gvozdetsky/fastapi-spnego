@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a problem with fastapi-spnego
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Kerberos issues are usually environmental, so the
+        details below help a lot. Please redact any real principals/hostnames.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal config, request, and the response/traceback.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: fastapi-spnego version
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options:
+        - GSSAPI (Linux/macOS)
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Python version, KDC type (MIT / Active Directory), reverse proxy?
+      placeholder: "Ubuntu 24.04, Python 3.12, Active Directory, behind nginx"
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant SPNEGO_ configuration
+      description: With secrets/hostnames redacted.
+      render: shell

@@ -93,3 +93,5 @@ def test_delegation_captures_ccache(forwardable_tgt: None) -> None:
     body = r.json()
     assert body["delegated_ccache"], "expected delegated credentials to be captured"
     assert body["delegated_ccache"].startswith("FILE:")
+    # ticket_lifetime() read the stored ccache back and found a live ticket.
+    assert isinstance(body["ccache_lifetime"], int) and body["ccache_lifetime"] > 0

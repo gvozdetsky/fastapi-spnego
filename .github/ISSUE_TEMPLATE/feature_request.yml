@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest an enhancement for fastapi-spnego
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: The use case or pain point, not just the proposed solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        Note: fastapi-spnego is deliberately *one auth provider* — user storage,
+        sessions, and RBAC are out of scope. See ROADMAP.md.

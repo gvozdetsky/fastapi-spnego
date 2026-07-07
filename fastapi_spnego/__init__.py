@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .backend import GSSAPIBackend, SpnegoBackend, default_backend
+from .ccache import cleanup, store_delegated, ticket_lifetime
 from .config import SpnegoConfig
 from .dependencies import SpnegoAuth
 from .exceptions import (
@@ -14,7 +15,12 @@ from .exceptions import (
 from .middleware import SpnegoMiddleware
 from .models import NegotiateResult, SpnegoIdentity
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import PackageNotFoundError, version
+
+    __version__ = version("fastapi-spnego")
+except PackageNotFoundError:  # running from a source tree that isn't installed
+    __version__ = "0.0.0+unknown"
 
 __all__ = [
     "SpnegoAuth",
@@ -29,4 +35,8 @@ __all__ = [
     "BackendUnavailableError",
     "NegotiateFailedError",
     "NegotiateChallenge",
+    # Delegated-credential (ccache) lifecycle helpers.
+    "store_delegated",
+    "ticket_lifetime",
+    "cleanup",
 ]

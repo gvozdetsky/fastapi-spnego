@@ -43,6 +43,13 @@ class SpnegoConfig(BaseSettings):
     #: When False the dependency returns ``None`` instead (useful for optional auth).
     auto_error: bool = True
 
+    #: When True, accept *any* service principal present in the keytab instead of
+    #: pinning to ``service_name``. Useful behind a reverse proxy where the public
+    #: SPN differs from the local FQDN, or when the keytab holds several SPNs. Only
+    #: enable it if you trust every principal in the keytab, since any of them will
+    #: be accepted.
+    accept_any_principal: bool = False
+
     @property
     def service_name(self) -> str:
         """The hostbased service name, e.g. ``HTTP@pgadmin.example.com``."""

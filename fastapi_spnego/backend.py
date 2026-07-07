@@ -59,6 +59,12 @@ class GSSAPIBackend:
     def _server_creds(self):  # type: ignore[no-untyped-def]
         import gssapi
 
+        if self.config.accept_any_principal:
+            # GSS_C_NO_NAME: accept whichever service principal the client's ticket
+            # targets, provided it exists in the keytab. Robust behind reverse
+            # proxies / with multi-SPN keytabs. See SpnegoConfig.accept_any_principal.
+            return gssapi.Credentials(usage="accept")
+
         name = gssapi.Name(self.config.service_name, name_type=gssapi.NameType.hostbased_service)
         cname = name.canonicalize(gssapi.MechType.kerberos)
         return gssapi.Credentials(usage="accept", name=cname)

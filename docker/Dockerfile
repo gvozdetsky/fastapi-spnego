@@ -21,6 +21,9 @@ WORKDIR /app
 # Install dependencies first for better layer caching.
 COPY pyproject.toml README.md ./
 COPY fastapi_spnego ./fastapi_spnego
+# .git isn't in the build context, so setuptools_scm can't derive a version here.
+# This image is only for dev/integration, so a placeholder version is fine.
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0
 RUN pip install --no-cache-dir -e '.[gssapi]' \
         'fastapi>=0.110.0' 'uvicorn[standard]>=0.29.0' \
         'pytest>=8.0.0' 'requests>=2.31.0' 'requests-gssapi>=1.3.0'

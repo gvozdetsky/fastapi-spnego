@@ -1,10 +1,11 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "fastapi-spnego"
-version = "0.1.0"
+# Version is derived from the Git tag by setuptools_scm — see [tool.setuptools_scm].
+dynamic = ["version"]
 description = "SPNEGO / Kerberos (HTTP Negotiate) authentication provider for FastAPI and Starlette"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +13,7 @@ license = { text = "MIT" }
 authors = [{ name = "Eugene Gvozdetsky" }]
 keywords = ["fastapi", "starlette", "kerberos", "spnego", "gssapi", "negotiate", "authentication", "sso", "active-directory"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -68,6 +69,14 @@ Issues = "https://github.com/gvozdetsky/fastapi-spnego/issues"
 
 [tool.setuptools.packages.find]
 include = ["fastapi_spnego*"]
+
+# Ship the PEP 561 marker so downstream mypy/IDEs pick up the inline type hints.
+[tool.setuptools.package-data]
+fastapi_spnego = ["py.typed"]
+
+# Version comes from the latest Git tag (e.g. `v0.2.0` -> `0.2.0`). Commits after a
+# tag build as dev versions; a dirty tree gets a local `+d<date>` segment.
+[tool.setuptools_scm]
 
 [tool.ruff]
 line-length = 100
