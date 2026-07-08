@@ -23,11 +23,30 @@ import os
 from collections.abc import Iterator
 
 import pytest
-from fastapi.testclient import TestClient
 
-# Only meaningful with the GSSAPI backend and an in-process KDC available.
+# This runs the real handshake in-process, so it needs the GSSAPI backend, an
+# in-process KDC (k5test), and Starlette's TestClient (which requires httpx).
+# Guard *before* importing anything below: the Docker integration image ships
+# gssapi but neither k5test nor httpx, and importing TestClient without httpx
+# raises at collection time — so these skips must come first.
 gssapi = pytest.importorskip("gssapi")
 pytest.importorskip("k5test")
+pytest.importorskip("httpx")
+
+# Imported after the skip-guards (hence E402). These must be module-level, not
+# local to the helpers below: with ``from __future__ import annotations`` the
+# endpoint signatures (``request: Request``) are strings that FastAPI resolves
+# against module globals — a local import would leave ``Request`` unresolved and
+# FastAPI would mistake ``request`` for a query parameter (HTTP 422).
+from fastapi import Depends, FastAPI, Request  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from fastapi_spnego import (  # noqa: E402
+    SpnegoAuth,
+    SpnegoConfig,
+    SpnegoIdentity,
+    SpnegoMiddleware,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -90,11 +109,7 @@ def _negotiate_token(realm: object, *, flags: list | None = None) -> tuple[objec
     return ctx, base64.b64encode(token).decode("ascii")
 
 
-def _dependency_app() -> object:
-    from fastapi import Depends, FastAPI
-
-    from fastapi_spnego import SpnegoAuth, SpnegoConfig, SpnegoIdentity
-
+def _dependency_app() -> FastAPI:
     # accept_any_principal: take whatever SPN the realm put in the keytab, so the
     # test needn't reconstruct the server's exact FQDN.
     spnego = SpnegoAuth(config=SpnegoConfig(accept_any_principal=True))
@@ -111,11 +126,7 @@ def _dependency_app() -> object:
     return app
 
 
-def _middleware_app() -> object:
-    from fastapi import FastAPI, Request
-
-    from fastapi_spnego import SpnegoConfig, SpnegoMiddleware
-
+def _middleware_app() -> FastAPI:
     app = FastAPI()
     app.add_middleware(SpnegoMiddleware, config=SpnegoConfig(accept_any_principal=True))
 
