@@ -61,6 +61,8 @@ dev = [
 gssapi = [
     "gssapi>=1.8",
     "requests-gssapi>=1.3.0",
+    # In-process MIT KDC for the no-Docker end-to-end handshake test.
+    "k5test>=0.10",
 ]
 
 [project.urls]
@@ -109,5 +111,5 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
-    "integration: end-to-end tests that require a real KDC (run via Docker).",
+    "integration: end-to-end tests that require a real KDC (Docker compose, or an in-process k5test KDC).",
 ]

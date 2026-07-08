@@ -76,3 +76,27 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  integration-native:
+    name: End-to-end (in-process KDC, no Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      # k5test drives a KDC in-process; it needs libkrb5-dev to build the gssapi
+      # wheel plus the MIT server tools (krb5kdc, kadmin.local, kdb5_util, kinit).
+      - name: Install system Kerberos stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libkrb5-dev krb5-kdc krb5-admin-server krb5-user
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Sync dependencies (locked, with gssapi extras)
+        run: uv sync --locked --group gssapi
+      - name: Run in-process KDC handshake test
+        run: uv run pytest tests/integration/test_k5_end_to_end.py -v
