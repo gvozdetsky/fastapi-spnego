@@ -63,6 +63,19 @@ def krb_realm() -> Iterator[object]:
         realm.stop()
 
 
+def _initiate_flags(mutual: bool) -> list:
+    """Client requirement flags, with mutual authentication optionally requested.
+
+    Mutual auth is the interesting axis: with it the acceptor returns a token we
+    must relay back (``WWW-Authenticate: Negotiate <token>``); without it the
+    single-leg handshake completes with no return token.
+    """
+    flags = [gssapi.RequirementFlag.out_of_sequence_detection]
+    if mutual:
+        flags.append(gssapi.RequirementFlag.mutual_authentication)
+    return flags
+
+
 def _negotiate_token(realm: object, *, flags: list | None = None) -> tuple[object, str]:
     """Produce the client's initial Negotiate token for the realm's host SPN.
 
@@ -71,9 +84,7 @@ def _negotiate_token(realm: object, *, flags: list | None = None) -> tuple[objec
     independent of DNS. Returns the live client context (to verify the mutual-auth
     reply) and the base64 token for the ``Authorization`` header.
     """
-    service = gssapi.Name(
-        f"host/{realm.hostname}", name_type=gssapi.NameType.kerberos_principal
-    )
+    service = gssapi.Name(f"host/{realm.hostname}", name_type=gssapi.NameType.kerberos_principal)
     ctx = gssapi.SecurityContext(name=service, usage="initiate", flags=flags)
     token = ctx.step()
     return ctx, base64.b64encode(token).decode("ascii")
@@ -130,11 +141,15 @@ def test_dependency_rejects_garbage_token(krb_realm: object) -> None:
     assert r.status_code == 403
 
 
-def test_dependency_authenticates_real_ticket(krb_realm: object) -> None:
-    # Default initiate flags request mutual authentication, so the server must
-    # return a token; feeding it back completes the client context — proving the
-    # WWW-Authenticate response leg is genuinely valid, not just present.
-    client_ctx, token = _negotiate_token(krb_realm)
+@pytest.mark.parametrize(
+    "mutual",
+    [pytest.param(True, id="mutual-auth"), pytest.param(False, id="no-mutual-auth")],
+)
+def test_dependency_authenticates_real_ticket(krb_realm: object, mutual: bool) -> None:
+    # Exercise both branches of the response leg: with mutual auth the server
+    # returns a token (which we relay back to complete the client context,
+    # proving it is genuinely valid); without it, no token is emitted.
+    client_ctx, token = _negotiate_token(krb_realm, flags=_initiate_flags(mutual))
     with TestClient(_dependency_app()) as client:
         r = client.get("/whoami", headers={"Authorization": f"Negotiate {token}"})
 
@@ -145,18 +160,24 @@ def test_dependency_authenticates_real_ticket(krb_realm: object) -> None:
     assert body["principal"] == krb_realm.user_princ
 
     challenge = r.headers.get("WWW-Authenticate", "")
-    assert challenge.startswith("Negotiate ")
-    client_ctx.step(base64.b64decode(challenge.split(" ", 1)[1]))
-    assert client_ctx.complete
+    if mutual:
+        assert challenge.startswith("Negotiate ")
+        client_ctx.step(base64.b64decode(challenge.split(" ", 1)[1]))
+        assert client_ctx.complete
+    else:
+        assert challenge == ""
 
 
-def test_middleware_authenticates_real_ticket(krb_realm: object) -> None:
-    # Mutual auth off: single-leg handshake, no return token needed.
-    _, token = _negotiate_token(
-        krb_realm, flags=[gssapi.RequirementFlag.out_of_sequence_detection]
-    )
+@pytest.mark.parametrize(
+    "mutual",
+    [pytest.param(True, id="mutual-auth"), pytest.param(False, id="no-mutual-auth")],
+)
+def test_middleware_authenticates_real_ticket(krb_realm: object, mutual: bool) -> None:
+    _, token = _negotiate_token(krb_realm, flags=_initiate_flags(mutual))
     with TestClient(_middleware_app()) as client:
         r = client.get("/whoami", headers={"Authorization": f"Negotiate {token}"})
 
     assert r.status_code == 200
     assert r.json()["username"] == "user"
+    challenge = r.headers.get("WWW-Authenticate", "")
+    assert challenge.startswith("Negotiate ") if mutual else challenge == ""

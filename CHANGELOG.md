@@ -6,6 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `SpnegoMiddleware(auth_required=...)`: an optional per-request predicate
+  `(scope) -> bool` (sync or async) deciding whether Negotiate is enforced —
+  more expressive than `exclude_paths` (e.g. require auth on writes, leave reads
+  optional). When it returns `False` a valid token still populates the identity,
+  but a missing/invalid one passes through instead of challenging.
+- No-Docker end-to-end test: the real SPNEGO/Negotiate handshake now also runs
+  against an in-process MIT KDC via `k5test`, so CI exercises the genuine GSSAPI
+  path without a container (complements the Docker integration suite).
+
 ## [0.2.0] — 2026-07-07
 
 ### Added

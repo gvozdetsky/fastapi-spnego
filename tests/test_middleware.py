@@ -89,3 +89,54 @@ def test_optional_auth_lets_request_through_without_identity() -> None:
     r = client.get("/whoami")
     assert r.status_code == 200
     assert r.json() == {"username": None}
+
+
+def make_callback_app(auth_required) -> FastAPI:  # type: ignore[no-untyped-def]
+    app = FastAPI()
+    app.add_middleware(
+        SpnegoMiddleware,
+        backend=FakeBackend(),
+        config=SpnegoConfig(),
+        auth_required=auth_required,
+    )
+
+    @app.api_route("/res", methods=["GET", "POST"])
+    def res(request: Request):  # type: ignore[no-untyped-def]
+        identity = request.state.spnego_identity
+        return {"username": identity.username if identity else None}
+
+    return app
+
+
+def test_auth_required_callback_skips_challenge_when_false() -> None:
+    # Predicate says GET is not required: a missing header passes through.
+    client = TestClient(make_callback_app(lambda scope: scope["method"] != "GET"))
+    r = client.get("/res")
+    assert r.status_code == 200
+    assert r.json() == {"username": None}
+
+
+def test_auth_required_callback_enforces_when_true() -> None:
+    # ...but the same predicate still challenges a POST.
+    client = TestClient(make_callback_app(lambda scope: scope["method"] != "GET"))
+    r = client.post("/res")
+    assert r.status_code == 401
+    assert r.headers["WWW-Authenticate"] == "Negotiate"
+
+
+def test_auth_required_callback_still_honors_valid_token() -> None:
+    # Not required, but a good token is present: identity is still populated.
+    client = TestClient(make_callback_app(lambda scope: False))
+    r = client.get("/res", headers={"Authorization": "Negotiate good"})
+    assert r.status_code == 200
+    assert r.json() == {"username": "alice"}
+    assert r.headers["WWW-Authenticate"] == "Negotiate server-mutual"
+
+
+def test_auth_required_async_callback() -> None:
+    async def predicate(scope) -> bool:  # type: ignore[no-untyped-def]
+        return True
+
+    client = TestClient(make_callback_app(predicate))
+    r = client.get("/res")
+    assert r.status_code == 401

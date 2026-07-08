@@ -74,6 +74,20 @@ def whoami(request: Request):
     return {"user": identity.username}
 ```
 
+`exclude_paths` skips auth for path prefixes. For finer control, pass an
+`auth_required` predicate `(scope) -> bool` (sync or async) — enforce auth only
+where you want it, e.g. require it on writes but leave reads optional:
+
+```python
+app.add_middleware(
+    SpnegoMiddleware,
+    auth_required=lambda scope: scope["method"] != "GET",
+)
+```
+
+When it returns `False`, a valid token still populates `request.state.spnego_identity`,
+but a missing/invalid one passes through (identity `None`) instead of a `401`.
+
 ## Credential delegation
 
 With `SPNEGO_ALLOW_DELEGATION=true`, when a client forwards (delegates) its TGT

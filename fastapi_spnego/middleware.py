@@ -23,6 +23,9 @@ Design notes:
 - Blocking GSSAPI work runs in a threadpool, exactly as in the dependency.
 - ``exclude_paths`` are matched as prefixes so health checks, metrics, and
   static assets can stay unauthenticated.
+- ``auth_required`` is an optional per-request predicate ``(scope) -> bool``
+  (sync or async) for finer control than path prefixes — e.g. enforce auth on
+  writes but leave ``GET`` optional.
 - On success the authenticated :class:`SpnegoIdentity` is placed on
   ``request.state.spnego_identity`` and the mutual-auth token (if any) is added
   to the response's ``WWW-Authenticate`` header.
@@ -32,8 +35,9 @@ Design notes:
 
 from __future__ import annotations
 
+import inspect
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, MutableHeaders
@@ -48,6 +52,11 @@ logger = logging.getLogger("fastapi_spnego")
 
 _PREFIX = "negotiate "
 
+#: A predicate deciding, per request, whether Negotiate auth is enforced. It
+#: receives the ASGI ``scope`` and returns a bool (or an awaitable of one), so it
+#: can branch on method, path, headers, etc. See ``SpnegoMiddleware.auth_required``.
+AuthRequired = Callable[[Scope], bool | Awaitable[bool]]
+
 
 class SpnegoMiddleware:
     """Apply SPNEGO/Negotiate authentication to every (non-excluded) request.
@@ -58,6 +67,16 @@ class SpnegoMiddleware:
         ``auto_error``. Ignored for backend selection when ``backend`` is given.
     :param exclude_paths: request-path prefixes that skip authentication
         entirely (e.g. ``["/health", "/metrics"]``).
+    :param auth_required: optional predicate ``(scope) -> bool`` (sync or async)
+        evaluated per request to decide whether authentication is enforced. It is
+        more expressive than ``exclude_paths`` (which only matches path prefixes):
+        branch on method, headers, or anything in the scope, e.g.
+        ``auth_required=lambda scope: scope["method"] != "GET"``. When it returns
+        ``False`` the request is treated as optional auth for that call — a valid
+        token still populates ``request.state.spnego_identity``, but a missing or
+        invalid one passes through with identity ``None`` instead of challenging.
+        When given, it overrides ``config.auto_error`` for the enforce decision;
+        ``exclude_paths`` still short-circuits first.
     """
 
     def __init__(
@@ -67,24 +86,40 @@ class SpnegoMiddleware:
         backend: SpnegoBackend | None = None,
         config: SpnegoConfig | None = None,
         exclude_paths: Iterable[str] | None = None,
+        auth_required: AuthRequired | None = None,
     ) -> None:
         self.app = app
         self.config = config or SpnegoConfig()
         self.backend = backend or default_backend(self.config)
         self.exclude_paths: Sequence[str] = tuple(exclude_paths or ())
+        self.auth_required = auth_required
 
     def _excluded(self, path: str) -> bool:
         return any(path == p or path.startswith(p) for p in self.exclude_paths)
+
+    async def _enforce(self, scope: Scope) -> bool:
+        """Whether to challenge/reject this request when auth is absent or bad.
+
+        With no ``auth_required`` predicate this is just ``config.auto_error``;
+        otherwise the predicate decides per request (and may be async).
+        """
+        if self.auth_required is None:
+            return self.config.auto_error
+        result = self.auth_required(scope)
+        if inspect.isawaitable(result):
+            result = await result
+        return bool(result)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or self._excluded(scope["path"]):
             await self.app(scope, receive, send)
             return
 
+        enforce = await self._enforce(scope)
         header = Headers(scope=scope).get("Authorization")
 
         if not header or not header.lower().startswith(_PREFIX):
-            if self.config.auto_error:
+            if enforce:
                 await self._challenge(scope, receive, send)
                 return
             self._set_identity(scope, None)
@@ -97,7 +132,7 @@ class SpnegoMiddleware:
             result = await run_in_threadpool(self.backend.step, in_token)
         except NegotiateFailedError as exc:
             logger.warning("Negotiate authentication failed: %s", exc)
-            if self.config.auto_error:
+            if enforce:
                 await self._forbidden(scope, receive, send)
                 return
             self._set_identity(scope, None)
